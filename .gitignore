@@ -1,0 +1,33 @@
+@"
+# Terraform
+*.tfstate
+*.tfstate.backup
+*.tfvars
+.terraform/
+.terraform.lock.hcl
+
+# Ansible Vault & secrets
+vault/secrets.yml
+*.vault
+
+# AWS credentials
+.aws/
+
+# Clés SSH
+*.pem
+*.key
+
+# Python
+__pycache__/
+*.pyc
+.env
+venv/
+
+# Node / React
+node_modules/
+dist/
+
+# OS
+.DS_Store
+Thumbs.db
+"@ | Set-Content .gitignore
