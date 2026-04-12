@@ -24,7 +24,7 @@ resource "aws_vpc" "helpdesk_vpc" {
   tags = { Name = "${var.project_name}-vpc" }
 }
 
-# ─── SUBNET PUBLIC (Nginx/Bastion uniquement) ──────────
+# ─── SUBNET PUBLIC (Nginx/Bastion) ─────────────────────
 resource "aws_subnet" "public_subnet" {
   vpc_id                  = aws_vpc.helpdesk_vpc.id
   cidr_block              = "10.0.1.0/24"
@@ -33,7 +33,7 @@ resource "aws_subnet" "public_subnet" {
   tags = { Name = "${var.project_name}-public-subnet" }
 }
 
-# ─── SUBNET PRIVÉ (Frontend, Backend, Database) ────────
+# ─── SUBNET PRIVE (Frontend, Backend, Database) ─────────
 resource "aws_subnet" "private_subnet" {
   vpc_id                  = aws_vpc.helpdesk_vpc.id
   cidr_block              = "10.0.2.0/24"
@@ -46,6 +46,20 @@ resource "aws_subnet" "private_subnet" {
 resource "aws_internet_gateway" "helpdesk_igw" {
   vpc_id = aws_vpc.helpdesk_vpc.id
   tags = { Name = "${var.project_name}-igw" }
+}
+
+# ─── ELASTIC IP POUR NAT GATEWAY ───────────────────────
+resource "aws_eip" "nat_eip" {
+  domain = "vpc"
+  tags = { Name = "${var.project_name}-nat-eip" }
+}
+
+# ─── NAT GATEWAY (dans le subnet public) ───────────────
+resource "aws_nat_gateway" "helpdesk_nat" {
+  allocation_id = aws_eip.nat_eip.id
+  subnet_id     = aws_subnet.public_subnet.id
+  tags = { Name = "${var.project_name}-nat-gateway" }
+  depends_on = [aws_internet_gateway.helpdesk_igw]
 }
 
 # ─── ROUTE TABLE PUBLIQUE ──────────────────────────────
@@ -63,9 +77,13 @@ resource "aws_route_table_association" "public_rta" {
   route_table_id = aws_route_table.public_rt.id
 }
 
-# ─── ROUTE TABLE PRIVÉE (aucune route vers internet) ───
+# ─── ROUTE TABLE PRIVEE (via NAT Gateway) ──────────────
 resource "aws_route_table" "private_rt" {
   vpc_id = aws_vpc.helpdesk_vpc.id
+  route {
+    cidr_block     = "0.0.0.0/0"
+    nat_gateway_id = aws_nat_gateway.helpdesk_nat.id
+  }
   tags = { Name = "${var.project_name}-private-rt" }
 }
 
@@ -78,7 +96,7 @@ resource "aws_route_table_association" "private_rta" {
 # SECURITY GROUPS
 # ═══════════════════════════════════════════════════════
 
-# ─── SG NGINX — Bastion + Load Balancer ────────────────
+# ─── SG NGINX ──────────────────────────────────────────
 resource "aws_security_group" "sg_nginx" {
   name        = "${var.project_name}-sg-nginx"
   description = "Bastion Host Load Balancer seul point entree internet"
@@ -115,7 +133,7 @@ resource "aws_security_group" "sg_nginx" {
   tags = { Name = "${var.project_name}-sg-nginx" }
 }
 
-# ─── SG FRONTEND — React (réseau privé) ────────────────
+# ─── SG FRONTEND ───────────────────────────────────────
 resource "aws_security_group" "sg_frontend" {
   name        = "${var.project_name}-sg-frontend"
   description = "Frontend React accessible depuis Nginx uniquement"
@@ -152,7 +170,7 @@ resource "aws_security_group" "sg_frontend" {
   tags = { Name = "${var.project_name}-sg-frontend" }
 }
 
-# ─── SG BACKEND — Flask API (réseau privé) ─────────────
+# ─── SG BACKEND ────────────────────────────────────────
 resource "aws_security_group" "sg_backend" {
   name        = "${var.project_name}-sg-backend"
   description = "Backend Flask accessible depuis subnet prive uniquement"
@@ -182,7 +200,7 @@ resource "aws_security_group" "sg_backend" {
   tags = { Name = "${var.project_name}-sg-backend" }
 }
 
-# ─── SG DATABASE — MySQL (réseau privé, isolée) ────────
+# ─── SG DATABASE ───────────────────────────────────────
 resource "aws_security_group" "sg_database" {
   name        = "${var.project_name}-sg-database"
   description = "Database MySQL accessible depuis backend uniquement"
@@ -224,7 +242,6 @@ resource "aws_security_group" "sg_database" {
 # ═══════════════════════════════════════════════════════
 
 # ─── NODE 1 — Nginx (Bastion + Load Balancer) ──────────
-# Seule machine avec IP publique
 resource "aws_instance" "nginx" {
   ami                    = var.ami_id
   instance_type          = var.instance_type
@@ -239,7 +256,7 @@ resource "aws_instance" "nginx" {
   }
 }
 
-# ─── NODE 2 — Frontend React (privé) ───────────────────
+# ─── NODE 2 — Frontend React (prive) ───────────────────
 resource "aws_instance" "frontend" {
   ami                    = var.ami_id
   instance_type          = var.instance_type
@@ -254,7 +271,7 @@ resource "aws_instance" "frontend" {
   }
 }
 
-# ─── NODE 3 — Backend Flask (privé) ────────────────────
+# ─── NODE 3 — Backend Flask (prive) ────────────────────
 resource "aws_instance" "backend" {
   ami                    = var.ami_id
   instance_type          = var.instance_type
@@ -269,7 +286,7 @@ resource "aws_instance" "backend" {
   }
 }
 
-# ─── NODE 4 — Database MySQL (privé, isolée) ───────────
+# ─── NODE 4 — Database MySQL (prive, isolee) ───────────
 resource "aws_instance" "database" {
   ami                    = var.ami_id
   instance_type          = var.instance_type
