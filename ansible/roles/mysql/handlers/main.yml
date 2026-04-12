@@ -1,0 +1,12 @@
+---
+- name: restart mariadb
+  service:
+    name: mariadb
+    state: restarted
+  become: yes
+
+- name: restart nginx
+  service:
+    name: nginx
+    state: restarted
+  become: yes
