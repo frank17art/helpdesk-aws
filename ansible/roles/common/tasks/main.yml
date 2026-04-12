@@ -1,0 +1,95 @@
+---
+- name: Mise a jour du cache apt
+  apt:
+    update_cache: yes
+    cache_valid_time: 3600
+  become: yes
+
+- name: Mise a jour de tous les paquets
+  apt:
+    upgrade: dist
+    autoremove: yes
+  become: yes
+
+- name: Installation des packages communs
+  apt:
+    name: "{{ common_packages }}"
+    state: present
+  become: yes
+
+- name: Configuration du fuseau horaire
+  timezone:
+    name: "{{ timezone }}"
+  become: yes
+
+- name: Autoriser SSH via UFW
+  ufw:
+    rule: allow
+    port: 22
+    proto: tcp
+  become: yes
+
+- name: Activer UFW
+  ufw:
+    state: enabled
+    policy: deny
+    direction: incoming
+  become: yes
+
+- name: Autoriser le trafic sortant
+  ufw:
+    state: enabled
+    policy: allow
+    direction: outgoing
+  become: yes
+
+- name: Copier la configuration fail2ban
+  copy:
+    dest: /etc/fail2ban/jail.local
+    content: |
+      [DEFAULT]
+      bantime  = 3600
+      findtime = 600
+      maxretry = 5
+      backend  = systemd
+
+      [sshd]
+      enabled  = true
+      port     = ssh
+      logpath  = %(sshd_log)s
+    owner: root
+    group: root
+    mode: '0644'
+  become: yes
+  notify: restart fail2ban
+
+- name: Desactiver connexion SSH root
+  lineinfile:
+    path: /etc/ssh/sshd_config
+    regexp: '^PermitRootLogin'
+    line: 'PermitRootLogin no'
+    state: present
+  become: yes
+  notify: restart ssh
+
+- name: Desactiver authentification par mot de passe
+  lineinfile:
+    path: /etc/ssh/sshd_config
+    regexp: '^PasswordAuthentication'
+    line: 'PasswordAuthentication no'
+    state: present
+  become: yes
+  notify: restart ssh
+
+- name: Creer utilisateur helpdesk
+  user:
+    name: helpdesk
+    shell: /bin/bash
+    create_home: yes
+    state: present
+  become: yes
+
+- name: Definir le hostname
+  hostname:
+    name: "{{ inventory_hostname }}"
+  become: yes

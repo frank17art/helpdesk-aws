@@ -1,0 +1,16 @@
+---
+- name: restart ssh
+  service:
+    name: ssh
+    state: restarted
+  become: yes
+
+- name: restart fail2ban
+  service:
+    name: fail2ban
+    state: restarted
+  become: yes
+
+- name: save iptables
+  command: netfilter-persistent save
+  become: yes

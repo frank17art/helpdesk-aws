@@ -1,0 +1,44 @@
+---
+- name: Activer IP forwarding
+  sysctl:
+    name: net.ipv4.ip_forward
+    value: '1'
+    sysctl_set: yes
+    state: present
+    reload: yes
+  become: yes
+
+- name: Installer iptables-persistent
+  apt:
+    name:
+      - iptables
+      - iptables-persistent
+    state: present
+    update_cache: yes
+  become: yes
+
+- name: Configurer NAT masquerade pour le subnet prive
+  iptables:
+    table: nat
+    chain: POSTROUTING
+    source: 10.0.2.0/24
+    out_interface: eth0
+    jump: MASQUERADE
+  become: yes
+  notify: save iptables
+
+- name: Autoriser le forwarding du subnet prive
+  iptables:
+    chain: FORWARD
+    source: 10.0.2.0/24
+    jump: ACCEPT
+  become: yes
+  notify: save iptables
+
+- name: Autoriser le forwarding des connexions etablies
+  iptables:
+    chain: FORWARD
+    ctstate: ESTABLISHED,RELATED
+    jump: ACCEPT
+  become: yes
+  notify: save iptables

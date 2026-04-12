@@ -1,16 +1,13 @@
 ---
-# Variables globales — appliquées à tous les noeuds
 project_name: helpdesk
 environment: production
 region: us-east-1
 datacenter: virginia
 timezone: America/Toronto
 
-# Utilisateur système
 ansible_user: ubuntu
 ansible_ssh_private_key_file: ~/.ssh/aws-helpdesk
 
-# Packages communs à installer sur tous les noeuds
 common_packages:
   - curl
   - wget
@@ -20,3 +17,5 @@ common_packages:
   - fail2ban
   - net-tools
   - htop
+  - vim
+  - python3-pip

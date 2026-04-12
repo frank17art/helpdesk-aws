@@ -1,0 +1,6 @@
+---
+- name: Configuration commune de tous les noeuds
+  hosts: all_nodes
+  become: yes
+  roles:
+    - common

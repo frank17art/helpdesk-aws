@@ -1,0 +1,68 @@
+---
+- name: Configurer Nginx comme NAT instance
+  hosts: bastion
+  become: yes
+  tasks:
+    - name: Activer IP forwarding
+      sysctl:
+        name: net.ipv4.ip_forward
+        value: '1'
+        sysctl_set: yes
+        state: present
+        reload: yes
+
+    - name: Installer iptables-persistent
+      apt:
+        name:
+          - iptables
+          - iptables-persistent
+        state: present
+        update_cache: yes
+
+    - name: Configurer NAT masquerade pour le subnet prive
+      iptables:
+        table: nat
+        chain: POSTROUTING
+        source: 10.0.2.0/24
+        out_interface: ens5
+        jump: MASQUERADE
+
+    - name: Politique FORWARD ACCEPT
+      iptables:
+        chain: FORWARD
+        policy: ACCEPT
+
+    - name: Sauvegarder les regles iptables
+      command: netfilter-persistent save
+
+- name: Configurer route persistante vers NAT sur noeuds prives
+  hosts: subnet_private
+  become: yes
+  tasks:
+    - name: Ajouter route par defaut via Nginx dans netplan
+      copy:
+        dest: /etc/netplan/99-nat-route.yaml
+        content: |
+          network:
+            version: 2
+            ethernets:
+              ens5:
+                routes:
+                  - to: 0.0.0.0/0
+                    via: 10.0.1.250
+                    metric: 50
+        owner: root
+        group: root
+        mode: '0600'
+
+    - name: Appliquer netplan
+      command: netplan apply
+
+    - name: Tester connexion internet
+      command: curl -s --max-time 10 http://8.8.8.8 -o /dev/null
+      register: internet_test
+      ignore_errors: yes
+
+    - name: Afficher resultat test internet
+      debug:
+        msg: "{{ 'OK - Internet accessible' if internet_test.rc == 0 else 'FAIL - Pas internet' }}"
