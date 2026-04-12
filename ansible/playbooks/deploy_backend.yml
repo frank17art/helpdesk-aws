@@ -1,0 +1,10 @@
+---
+- name: Deploiement Backend Flask
+  hosts: backend_servers
+  become: yes
+  vars_files:
+    - ../vault/secrets.yml
+  vars:
+    db_host: "10.0.2.50"
+  roles:
+    - backend

@@ -93,3 +93,50 @@
   hostname:
     name: "{{ inventory_hostname }}"
   become: yes
+
+- name: Ouvrir port MySQL sur database
+  ufw:
+    rule: allow
+    port: 3306
+    proto: tcp
+    src: 10.0.2.0/24
+  become: yes
+  when: "'database_servers' in group_names"
+
+- name: Ouvrir port Flask sur backend
+  ufw:
+    rule: allow
+    port: 5000
+    proto: tcp
+    src: 10.0.0.0/16
+  become: yes
+  when: "'backend_servers' in group_names"
+
+- name: Ouvrir port React sur frontend
+  ufw:
+    rule: allow
+    port: 3000
+    proto: tcp
+    src: 10.0.1.0/24
+  become: yes
+  when: "'frontend_servers' in group_names"
+
+- name: Ouvrir ports HTTP et HTTPS sur nginx
+  ufw:
+    rule: allow
+    port: "{{ item }}"
+    proto: tcp
+  loop:
+    - 80
+    - 443
+  become: yes
+  when: "'bastion' in group_names"
+
+- name: Ouvrir port Adminer sur database
+  ufw:
+    rule: allow
+    port: 8080
+    proto: tcp
+    src: 10.0.2.0/24
+  become: yes
+  when: "'database_servers' in group_names"

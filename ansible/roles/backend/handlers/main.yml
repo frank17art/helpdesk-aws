@@ -1,0 +1,11 @@
+---
+- name: reload systemd
+  systemd:
+    daemon_reload: yes
+  become: yes
+
+- name: restart backend
+  systemd:
+    name: helpdesk-backend
+    state: restarted
+  become: yes
