@@ -1,0 +1,76 @@
+---
+- name: Deploiement Nginx Load Balancer
+  hosts: bastion
+  become: yes
+  vars:
+    backend_ip: "10.0.2.4"
+    frontend_ip: "10.0.2.171"
+  tasks:
+    - name: Installer Nginx
+      apt:
+        name: nginx
+        state: present
+        update_cache: yes
+
+    - name: Configurer Nginx comme reverse proxy
+      copy:
+        dest: /etc/nginx/sites-available/helpdesk
+        content: |
+          upstream backend {
+            server {{ backend_ip }}:5000;
+          }
+
+          upstream frontend {
+            server {{ frontend_ip }}:80;
+          }
+
+          server {
+            listen 80;
+            server_name _;
+
+            location /api/ {
+              proxy_pass http://backend/api/;
+              proxy_set_header Host $host;
+              proxy_set_header X-Real-IP $remote_addr;
+              proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+              proxy_connect_timeout 30s;
+              proxy_read_timeout 60s;
+            }
+
+            location / {
+              proxy_pass http://frontend/;
+              proxy_set_header Host $host;
+              proxy_set_header X-Real-IP $remote_addr;
+              proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+              proxy_connect_timeout 30s;
+              proxy_read_timeout 60s;
+            }
+          }
+        owner: root
+        group: root
+        mode: '0644'
+
+    - name: Activer le site helpdesk
+      file:
+        src: /etc/nginx/sites-available/helpdesk
+        dest: /etc/nginx/sites-enabled/helpdesk
+        state: link
+
+    - name: Desactiver le site default
+      file:
+        path: /etc/nginx/sites-enabled/default
+        state: absent
+
+    - name: Tester la configuration Nginx
+      command: nginx -t
+      register: nginx_test
+
+    - name: Redemarrer Nginx
+      service:
+        name: nginx
+        state: restarted
+        enabled: yes
+
+    - name: Afficher l'URL de l'application
+      debug:
+        msg: "Application disponible sur http://13.219.202.209"

@@ -1,0 +1,1135 @@
+---
+# ══════════════════════════════════════════════
+# ROLE FRONTEND — React + Vite + Chart.js
+# ══════════════════════════════════════════════
+
+# ─── 1. INSTALLATION NODE.JS ──────────────────
+- name: Installer curl et gnupg
+  apt:
+    name:
+      - curl
+      - gnupg
+    state: present
+    update_cache: yes
+  become: yes
+
+- name: Ajouter le depot NodeJS 20
+  shell: |
+    curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
+  become: yes
+  args:
+    creates: /etc/apt/sources.list.d/nodesource.list
+
+- name: Installer NodeJS
+  apt:
+    name: nodejs
+    state: present
+    update_cache: yes
+  become: yes
+
+- name: Verifier version Node
+  command: node --version
+  register: node_version
+
+- name: Afficher version Node
+  debug:
+    msg: "Node version: {{ node_version.stdout }}"
+
+# ─── 2. CREATION APPLICATION REACT ────────────
+- name: Creer le dossier de l'application
+  file:
+    path: /opt/helpdesk-frontend
+    state: directory
+    owner: helpdesk
+    group: helpdesk
+    mode: '0755'
+  become: yes
+
+- name: Creer package.json
+  copy:
+    dest: /opt/helpdesk-frontend/package.json
+    content: |
+      {
+        "name": "helpdesk-frontend",
+        "version": "1.0.0",
+        "type": "module",
+        "scripts": {
+          "dev": "vite",
+          "build": "vite build",
+          "preview": "vite preview"
+        },
+        "dependencies": {
+          "react": "^18.2.0",
+          "react-dom": "^18.2.0",
+          "react-router-dom": "^6.20.0",
+          "axios": "^1.6.0",
+          "chart.js": "^4.4.0",
+          "react-chartjs-2": "^5.2.0"
+        },
+        "devDependencies": {
+          "@vitejs/plugin-react": "^4.2.0",
+          "vite": "^5.0.0"
+        }
+      }
+    owner: helpdesk
+    group: helpdesk
+    mode: '0644'
+  become: yes
+
+- name: Creer vite.config.js
+  copy:
+    dest: /opt/helpdesk-frontend/vite.config.js
+    content: |
+      import { defineConfig } from 'vite'
+      import react from '@vitejs/plugin-react'
+
+      export default defineConfig({
+        plugins: [react()],
+        build: {
+          outDir: 'dist'
+        },
+        server: {
+          host: '0.0.0.0',
+          port: 3000
+        }
+      })
+    owner: helpdesk
+    group: helpdesk
+    mode: '0644'
+  become: yes
+
+- name: Creer index.html
+  copy:
+    dest: /opt/helpdesk-frontend/index.html
+    content: |
+      <!DOCTYPE html>
+      <html lang="fr">
+        <head>
+          <meta charset="UTF-8" />
+          <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+          <title>HelpDesk Pro</title>
+          <style>
+            * { margin: 0; padding: 0; box-sizing: border-box; }
+            body { font-family: 'Segoe UI', sans-serif; background: #f0f2f5; }
+          </style>
+        </head>
+        <body>
+          <div id="root"></div>
+          <script type="module" src="/src/main.jsx"></script>
+        </body>
+      </html>
+    owner: helpdesk
+    group: helpdesk
+    mode: '0644'
+  become: yes
+
+- name: Creer dossier src
+  file:
+    path: /opt/helpdesk-frontend/src
+    state: directory
+    owner: helpdesk
+    group: helpdesk
+    mode: '0755'
+  become: yes
+
+- name: Creer main.jsx
+  copy:
+    dest: /opt/helpdesk-frontend/src/main.jsx
+    content: |
+      import React from 'react'
+      import ReactDOM from 'react-dom/client'
+      import App from './App.jsx'
+
+      ReactDOM.createRoot(document.getElementById('root')).render(
+        <React.StrictMode>
+          <App />
+        </React.StrictMode>
+      )
+    owner: helpdesk
+    group: helpdesk
+    mode: '0644'
+  become: yes
+
+- name: Creer api.js
+  copy:
+    dest: /opt/helpdesk-frontend/src/api.js
+    content: |
+      import axios from 'axios'
+
+      const API_URL = 'http://13.219.202.209/api'
+
+      const api = axios.create({ baseURL: API_URL })
+
+      api.interceptors.request.use(config => {
+        const token = localStorage.getItem('token')
+        if (token) config.headers.Authorization = `Bearer ${token}`
+        return config
+      })
+
+      api.interceptors.response.use(
+        res => res,
+        err => {
+          if (err.response?.status === 401) {
+            localStorage.clear()
+            window.location.href = '/login'
+          }
+          return Promise.reject(err)
+        }
+      )
+
+      export default api
+    owner: helpdesk
+    group: helpdesk
+    mode: '0644'
+  become: yes
+
+- name: Creer App.jsx
+  copy:
+    dest: /opt/helpdesk-frontend/src/App.jsx
+    content: |
+      import React from 'react'
+      import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+      import Login from './pages/Login.jsx'
+      import Register from './pages/Register.jsx'
+      import Dashboard from './pages/Dashboard.jsx'
+      import Tickets from './pages/Tickets.jsx'
+      import TicketDetail from './pages/TicketDetail.jsx'
+      import Users from './pages/Users.jsx'
+      import Layout from './components/Layout.jsx'
+
+      const PrivateRoute = ({ children }) => {
+        return localStorage.getItem('token') ? children : <Navigate to="/login" />
+      }
+
+      export default function App() {
+        return (
+          <BrowserRouter>
+            <Routes>
+              <Route path="/login" element={<Login />} />
+              <Route path="/register" element={<Register />} />
+              <Route path="/" element={<PrivateRoute><Layout /></PrivateRoute>}>
+                <Route index element={<Dashboard />} />
+                <Route path="tickets" element={<Tickets />} />
+                <Route path="tickets/:id" element={<TicketDetail />} />
+                <Route path="users" element={<Users />} />
+              </Route>
+            </Routes>
+          </BrowserRouter>
+        )
+      }
+    owner: helpdesk
+    group: helpdesk
+    mode: '0644'
+  become: yes
+
+- name: Creer dossier pages et components
+  file:
+    path: "{{ item }}"
+    state: directory
+    owner: helpdesk
+    group: helpdesk
+    mode: '0755'
+  loop:
+    - /opt/helpdesk-frontend/src/pages
+    - /opt/helpdesk-frontend/src/components
+  become: yes
+
+- name: Creer styles communs
+  copy:
+    dest: /opt/helpdesk-frontend/src/styles.js
+    content: |
+      export const colors = {
+        primary: '#2563eb',
+        success: '#16a34a',
+        warning: '#d97706',
+        danger: '#dc2626',
+        info: '#0891b2',
+        bg: '#f0f2f5',
+        card: '#ffffff',
+        border: '#e5e7eb',
+        text: '#1f2937',
+        muted: '#6b7280'
+      }
+
+      export const statusColor = {
+        open: '#2563eb',
+        in_progress: '#d97706',
+        resolved: '#16a34a',
+        closed: '#6b7280'
+      }
+
+      export const priorityColor = {
+        low: '#16a34a',
+        medium: '#d97706',
+        high: '#ea580c',
+        critical: '#dc2626'
+      }
+    owner: helpdesk
+    group: helpdesk
+    mode: '0644'
+  become: yes
+
+- name: Creer Layout.jsx
+  copy:
+    dest: /opt/helpdesk-frontend/src/components/Layout.jsx
+    content: |
+      import React, { useState, useEffect } from 'react'
+      import { Outlet, Link, useNavigate, useLocation } from 'react-router-dom'
+      import api from '../api.js'
+
+      export default function Layout() {
+        const navigate = useNavigate()
+        const location = useLocation()
+        const [user, setUser] = useState(null)
+        const [notifCount, setNotifCount] = useState(0)
+
+        useEffect(() => {
+          api.get('/auth/me').then(r => setUser(r.data)).catch(() => {})
+          api.get('/notifications').then(r => {
+            setNotifCount(r.data.filter(n => !n.is_read).length)
+          }).catch(() => {})
+        }, [])
+
+        const logout = () => {
+          localStorage.clear()
+          navigate('/login')
+        }
+
+        const navStyle = (path) => ({
+          display: 'block', padding: '10px 16px', borderRadius: '8px',
+          textDecoration: 'none', marginBottom: '4px',
+          background: location.pathname === path ? '#2563eb' : 'transparent',
+          color: location.pathname === path ? '#fff' : '#374151',
+          fontWeight: '500', fontSize: '14px'
+        })
+
+        return (
+          <div style={{ display: 'flex', minHeight: '100vh', background: '#f0f2f5' }}>
+            <aside style={{
+              width: '240px', background: '#fff', borderRight: '1px solid #e5e7eb',
+              padding: '24px 16px', display: 'flex', flexDirection: 'column'
+            }}>
+              <div style={{ marginBottom: '32px' }}>
+                <h1 style={{ fontSize: '20px', fontWeight: '700', color: '#2563eb' }}>
+                  HelpDesk Pro
+                </h1>
+                <p style={{ fontSize: '12px', color: '#6b7280', marginTop: '4px' }}>
+                  Systeme de tickets
+                </p>
+              </div>
+              <nav style={{ flex: 1 }}>
+                <Link to="/" style={navStyle('/')}>Dashboard</Link>
+                <Link to="/tickets" style={navStyle('/tickets')}>
+                  Tickets {notifCount > 0 && (
+                    <span style={{
+                      background: '#dc2626', color: '#fff', borderRadius: '10px',
+                      padding: '1px 6px', fontSize: '11px', marginLeft: '6px'
+                    }}>{notifCount}</span>
+                  )}
+                </Link>
+                {user?.role === 'admin' && (
+                  <Link to="/users" style={navStyle('/users')}>Utilisateurs</Link>
+                )}
+              </nav>
+              <div style={{ borderTop: '1px solid #e5e7eb', paddingTop: '16px' }}>
+                <p style={{ fontSize: '13px', fontWeight: '600', color: '#1f2937' }}>
+                  {user?.name}
+                </p>
+                <p style={{ fontSize: '11px', color: '#6b7280', marginBottom: '8px' }}>
+                  {user?.role}
+                </p>
+                <button onClick={logout} style={{
+                  width: '100%', padding: '8px', background: '#fee2e2',
+                  color: '#dc2626', border: 'none', borderRadius: '6px',
+                  cursor: 'pointer', fontSize: '13px', fontWeight: '500'
+                }}>
+                  Deconnexion
+                </button>
+              </div>
+            </aside>
+            <main style={{ flex: 1, padding: '32px', overflow: 'auto' }}>
+              <Outlet />
+            </main>
+          </div>
+        )
+      }
+    owner: helpdesk
+    group: helpdesk
+    mode: '0644'
+  become: yes
+
+- name: Creer Login.jsx
+  copy:
+    dest: /opt/helpdesk-frontend/src/pages/Login.jsx
+    content: |
+      import React, { useState } from 'react'
+      import { useNavigate, Link } from 'react-router-dom'
+      import api from '../api.js'
+
+      export default function Login() {
+        const [form, setForm] = useState({ email: '', password: '' })
+        const [error, setError] = useState('')
+        const [loading, setLoading] = useState(false)
+        const navigate = useNavigate()
+
+        const submit = async (e) => {
+          e.preventDefault()
+          setLoading(true)
+          setError('')
+          try {
+            const res = await api.post('/auth/login', form)
+            localStorage.setItem('token', res.data.access_token)
+            localStorage.setItem('user', JSON.stringify(res.data.user))
+            navigate('/')
+          } catch (err) {
+            setError(err.response?.data?.error || 'Erreur de connexion')
+          } finally {
+            setLoading(false)
+          }
+        }
+
+        return (
+          <div style={{
+            minHeight: '100vh', display: 'flex', alignItems: 'center',
+            justifyContent: 'center', background: 'linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)'
+          }}>
+            <div style={{
+              background: '#fff', borderRadius: '16px', padding: '48px',
+              width: '400px', boxShadow: '0 20px 60px rgba(0,0,0,0.15)'
+            }}>
+              <h1 style={{ fontSize: '28px', fontWeight: '700', color: '#1f2937', marginBottom: '8px' }}>
+                HelpDesk Pro
+              </h1>
+              <p style={{ color: '#6b7280', marginBottom: '32px' }}>Connectez-vous a votre compte</p>
+              {error && (
+                <div style={{
+                  background: '#fee2e2', color: '#dc2626', padding: '12px',
+                  borderRadius: '8px', marginBottom: '16px', fontSize: '14px'
+                }}>{error}</div>
+              )}
+              <form onSubmit={submit}>
+                <div style={{ marginBottom: '16px' }}>
+                  <label style={{ display: 'block', fontSize: '14px', fontWeight: '500', marginBottom: '6px', color: '#374151' }}>
+                    Email
+                  </label>
+                  <input
+                    type="email" required value={form.email}
+                    onChange={e => setForm({...form, email: e.target.value})}
+                    style={{
+                      width: '100%', padding: '10px 14px', border: '1px solid #d1d5db',
+                      borderRadius: '8px', fontSize: '14px', outline: 'none'
+                    }}
+                    placeholder="admin@helpdesk.com"
+                  />
+                </div>
+                <div style={{ marginBottom: '24px' }}>
+                  <label style={{ display: 'block', fontSize: '14px', fontWeight: '500', marginBottom: '6px', color: '#374151' }}>
+                    Mot de passe
+                  </label>
+                  <input
+                    type="password" required value={form.password}
+                    onChange={e => setForm({...form, password: e.target.value})}
+                    style={{
+                      width: '100%', padding: '10px 14px', border: '1px solid #d1d5db',
+                      borderRadius: '8px', fontSize: '14px', outline: 'none'
+                    }}
+                    placeholder="••••••••"
+                  />
+                </div>
+                <button type="submit" disabled={loading} style={{
+                  width: '100%', padding: '12px', background: '#2563eb',
+                  color: '#fff', border: 'none', borderRadius: '8px',
+                  fontSize: '15px', fontWeight: '600', cursor: 'pointer'
+                }}>
+                  {loading ? 'Connexion...' : 'Se connecter'}
+                </button>
+              </form>
+              <p style={{ textAlign: 'center', marginTop: '16px', fontSize: '14px', color: '#6b7280' }}>
+                Pas de compte ? <Link to="/register" style={{ color: '#2563eb' }}>S'inscrire</Link>
+              </p>
+            </div>
+          </div>
+        )
+      }
+    owner: helpdesk
+    group: helpdesk
+    mode: '0644'
+  become: yes
+
+- name: Creer Register.jsx
+  copy:
+    dest: /opt/helpdesk-frontend/src/pages/Register.jsx
+    content: |
+      import React, { useState } from 'react'
+      import { useNavigate, Link } from 'react-router-dom'
+      import api from '../api.js'
+
+      export default function Register() {
+        const [form, setForm] = useState({ name: '', email: '', password: '' })
+        const [error, setError] = useState('')
+        const [loading, setLoading] = useState(false)
+        const navigate = useNavigate()
+
+        const submit = async (e) => {
+          e.preventDefault()
+          setLoading(true)
+          setError('')
+          try {
+            await api.post('/auth/register', form)
+            const res = await api.post('/auth/login', { email: form.email, password: form.password })
+            localStorage.setItem('token', res.data.access_token)
+            localStorage.setItem('user', JSON.stringify(res.data.user))
+            navigate('/')
+          } catch (err) {
+            setError(err.response?.data?.error || 'Erreur inscription')
+          } finally {
+            setLoading(false)
+          }
+        }
+
+        return (
+          <div style={{
+            minHeight: '100vh', display: 'flex', alignItems: 'center',
+            justifyContent: 'center', background: 'linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)'
+          }}>
+            <div style={{
+              background: '#fff', borderRadius: '16px', padding: '48px',
+              width: '400px', boxShadow: '0 20px 60px rgba(0,0,0,0.15)'
+            }}>
+              <h1 style={{ fontSize: '24px', fontWeight: '700', color: '#1f2937', marginBottom: '8px' }}>
+                Creer un compte
+              </h1>
+              {error && (
+                <div style={{
+                  background: '#fee2e2', color: '#dc2626', padding: '12px',
+                  borderRadius: '8px', marginBottom: '16px', fontSize: '14px'
+                }}>{error}</div>
+              )}
+              <form onSubmit={submit}>
+                {['name', 'email', 'password'].map(field => (
+                  <div key={field} style={{ marginBottom: '16px' }}>
+                    <label style={{ display: 'block', fontSize: '14px', fontWeight: '500', marginBottom: '6px', color: '#374151' }}>
+                      {field === 'name' ? 'Nom complet' : field === 'email' ? 'Email' : 'Mot de passe'}
+                    </label>
+                    <input
+                      type={field === 'password' ? 'password' : field === 'email' ? 'email' : 'text'}
+                      required value={form[field]}
+                      onChange={e => setForm({...form, [field]: e.target.value})}
+                      style={{
+                        width: '100%', padding: '10px 14px', border: '1px solid #d1d5db',
+                        borderRadius: '8px', fontSize: '14px', outline: 'none'
+                      }}
+                    />
+                  </div>
+                ))}
+                <button type="submit" disabled={loading} style={{
+                  width: '100%', padding: '12px', background: '#2563eb',
+                  color: '#fff', border: 'none', borderRadius: '8px',
+                  fontSize: '15px', fontWeight: '600', cursor: 'pointer', marginTop: '8px'
+                }}>
+                  {loading ? 'Inscription...' : "S'inscrire"}
+                </button>
+              </form>
+              <p style={{ textAlign: 'center', marginTop: '16px', fontSize: '14px', color: '#6b7280' }}>
+                Deja un compte ? <Link to="/login" style={{ color: '#2563eb' }}>Se connecter</Link>
+              </p>
+            </div>
+          </div>
+        )
+      }
+    owner: helpdesk
+    group: helpdesk
+    mode: '0644'
+  become: yes
+
+- name: Creer Dashboard.jsx
+  copy:
+    dest: /opt/helpdesk-frontend/src/pages/Dashboard.jsx
+    content: |
+      import React, { useState, useEffect } from 'react'
+      import { Link } from 'react-router-dom'
+      import { Chart as ChartJS, ArcElement, Tooltip, Legend, CategoryScale, LinearScale, BarElement } from 'chart.js'
+      import { Doughnut, Bar } from 'react-chartjs-2'
+      import api from '../api.js'
+
+      ChartJS.register(ArcElement, Tooltip, Legend, CategoryScale, LinearScale, BarElement)
+
+      const StatCard = ({ label, value, color }) => (
+        <div style={{
+          background: '#fff', borderRadius: '12px', padding: '24px',
+          borderLeft: `4px solid ${color}`, boxShadow: '0 1px 4px rgba(0,0,0,0.08)'
+        }}>
+          <p style={{ fontSize: '13px', color: '#6b7280', marginBottom: '8px' }}>{label}</p>
+          <p style={{ fontSize: '32px', fontWeight: '700', color }}>{value}</p>
+        </div>
+      )
+
+      export default function Dashboard() {
+        const [stats, setStats] = useState(null)
+        const [tickets, setTickets] = useState([])
+
+        useEffect(() => {
+          api.get('/dashboard/stats').then(r => setStats(r.data)).catch(() => {})
+          api.get('/tickets').then(r => setTickets(r.data.slice(0, 5))).catch(() => {})
+        }, [])
+
+        if (!stats) return <div style={{ padding: '40px', textAlign: 'center', color: '#6b7280' }}>Chargement...</div>
+
+        const doughnutData = {
+          labels: ['Ouverts', 'En cours', 'Resolus', 'Fermes'],
+          datasets: [{
+            data: [stats.open, stats.in_progress, stats.resolved, stats.closed],
+            backgroundColor: ['#2563eb', '#d97706', '#16a34a', '#6b7280'],
+            borderWidth: 0
+          }]
+        }
+
+        const priorityData = {
+          labels: ['Bas', 'Moyen', 'Haut', 'Critique'],
+          datasets: [{
+            label: 'Tickets par priorite',
+            data: [0, 0, 0, stats.critical],
+            backgroundColor: ['#16a34a', '#d97706', '#ea580c', '#dc2626']
+          }]
+        }
+
+        return (
+          <div>
+            <div style={{ marginBottom: '32px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div>
+                <h2 style={{ fontSize: '24px', fontWeight: '700', color: '#1f2937' }}>Dashboard</h2>
+                <p style={{ color: '#6b7280', marginTop: '4px' }}>Vue d'ensemble du systeme</p>
+              </div>
+              <Link to="/tickets/new" style={{
+                padding: '10px 20px', background: '#2563eb', color: '#fff',
+                borderRadius: '8px', textDecoration: 'none', fontSize: '14px', fontWeight: '600'
+              }}>
+                + Nouveau ticket
+              </Link>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '16px', marginBottom: '32px' }}>
+              <StatCard label="Total tickets" value={stats.total} color="#2563eb" />
+              <StatCard label="Ouverts" value={stats.open} color="#2563eb" />
+              <StatCard label="En cours" value={stats.in_progress} color="#d97706" />
+              <StatCard label="Resolus" value={stats.resolved} color="#16a34a" />
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px', marginBottom: '32px' }}>
+              <div style={{ background: '#fff', borderRadius: '12px', padding: '24px', boxShadow: '0 1px 4px rgba(0,0,0,0.08)' }}>
+                <h3 style={{ fontSize: '16px', fontWeight: '600', marginBottom: '16px', color: '#1f2937' }}>
+                  Repartition par statut
+                </h3>
+                <Doughnut data={doughnutData} options={{ plugins: { legend: { position: 'bottom' } } }} />
+              </div>
+              <div style={{ background: '#fff', borderRadius: '12px', padding: '24px', boxShadow: '0 1px 4px rgba(0,0,0,0.08)' }}>
+                <h3 style={{ fontSize: '16px', fontWeight: '600', marginBottom: '16px', color: '#1f2937' }}>
+                  Tickets critiques
+                </h3>
+                <div style={{ textAlign: 'center', padding: '40px 0' }}>
+                  <p style={{ fontSize: '64px', fontWeight: '700', color: '#dc2626' }}>{stats.critical}</p>
+                  <p style={{ color: '#6b7280', marginTop: '8px' }}>tickets critiques actifs</p>
+                </div>
+              </div>
+            </div>
+
+            <div style={{ background: '#fff', borderRadius: '12px', padding: '24px', boxShadow: '0 1px 4px rgba(0,0,0,0.08)' }}>
+              <h3 style={{ fontSize: '16px', fontWeight: '600', marginBottom: '16px', color: '#1f2937' }}>
+                Derniers tickets
+              </h3>
+              {tickets.length === 0 ? (
+                <p style={{ color: '#6b7280', textAlign: 'center', padding: '20px' }}>Aucun ticket pour le moment</p>
+              ) : (
+                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                  <thead>
+                    <tr style={{ borderBottom: '2px solid #f3f4f6' }}>
+                      {['#', 'Titre', 'Statut', 'Priorite', 'Date'].map(h => (
+                        <th key={h} style={{ padding: '8px 12px', textAlign: 'left', fontSize: '13px', color: '#6b7280', fontWeight: '600' }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {tickets.map(t => (
+                      <tr key={t.id} style={{ borderBottom: '1px solid #f3f4f6' }}>
+                        <td style={{ padding: '12px', fontSize: '13px', color: '#6b7280' }}>#{t.id}</td>
+                        <td style={{ padding: '12px', fontSize: '14px', color: '#1f2937', fontWeight: '500' }}>
+                          <Link to={`/tickets/${t.id}`} style={{ color: '#2563eb', textDecoration: 'none' }}>{t.title}</Link>
+                        </td>
+                        <td style={{ padding: '12px' }}>
+                          <span style={{
+                            padding: '3px 10px', borderRadius: '12px', fontSize: '12px', fontWeight: '500',
+                            background: t.status === 'open' ? '#dbeafe' : t.status === 'in_progress' ? '#fef3c7' : '#dcfce7',
+                            color: t.status === 'open' ? '#1d4ed8' : t.status === 'in_progress' ? '#92400e' : '#166534'
+                          }}>{t.status}</span>
+                        </td>
+                        <td style={{ padding: '12px' }}>
+                          <span style={{
+                            padding: '3px 10px', borderRadius: '12px', fontSize: '12px', fontWeight: '500',
+                            background: t.priority === 'critical' ? '#fee2e2' : t.priority === 'high' ? '#ffedd5' : '#f3f4f6',
+                            color: t.priority === 'critical' ? '#991b1b' : t.priority === 'high' ? '#9a3412' : '#374151'
+                          }}>{t.priority}</span>
+                        </td>
+                        <td style={{ padding: '12px', fontSize: '13px', color: '#6b7280' }}>
+                          {new Date(t.created_at).toLocaleDateString('fr-CA')}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          </div>
+        )
+      }
+    owner: helpdesk
+    group: helpdesk
+    mode: '0644'
+  become: yes
+
+- name: Creer Tickets.jsx
+  copy:
+    dest: /opt/helpdesk-frontend/src/pages/Tickets.jsx
+    content: |
+      import React, { useState, useEffect } from 'react'
+      import { Link } from 'react-router-dom'
+      import api from '../api.js'
+
+      export default function Tickets() {
+        const [tickets, setTickets] = useState([])
+        const [categories, setCategories] = useState([])
+        const [showForm, setShowForm] = useState(false)
+        const [filter, setFilter] = useState('all')
+        const [form, setForm] = useState({ title: '', description: '', priority: 'medium', category_id: '' })
+        const [loading, setLoading] = useState(false)
+
+        useEffect(() => {
+          api.get('/tickets').then(r => setTickets(r.data)).catch(() => {})
+          api.get('/categories').then(r => setCategories(r.data)).catch(() => {})
+        }, [])
+
+        const filtered = filter === 'all' ? tickets : tickets.filter(t => t.status === filter)
+
+        const submit = async (e) => {
+          e.preventDefault()
+          setLoading(true)
+          try {
+            const res = await api.post('/tickets', form)
+            setTickets([res.data, ...tickets])
+            setShowForm(false)
+            setForm({ title: '', description: '', priority: 'medium', category_id: '' })
+          } catch (err) {
+            alert('Erreur lors de la creation du ticket')
+          } finally {
+            setLoading(false)
+          }
+        }
+
+        return (
+          <div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
+              <h2 style={{ fontSize: '24px', fontWeight: '700', color: '#1f2937' }}>Tickets</h2>
+              <button onClick={() => setShowForm(!showForm)} style={{
+                padding: '10px 20px', background: '#2563eb', color: '#fff',
+                border: 'none', borderRadius: '8px', cursor: 'pointer', fontSize: '14px', fontWeight: '600'
+              }}>
+                {showForm ? 'Annuler' : '+ Nouveau ticket'}
+              </button>
+            </div>
+
+            {showForm && (
+              <div style={{
+                background: '#fff', borderRadius: '12px', padding: '24px',
+                marginBottom: '24px', boxShadow: '0 1px 4px rgba(0,0,0,0.08)'
+              }}>
+                <h3 style={{ fontSize: '16px', fontWeight: '600', marginBottom: '16px', color: '#1f2937' }}>
+                  Nouveau ticket
+                </h3>
+                <form onSubmit={submit}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '16px' }}>
+                    <div>
+                      <label style={{ display: 'block', fontSize: '13px', fontWeight: '500', marginBottom: '6px', color: '#374151' }}>Titre *</label>
+                      <input required value={form.title}
+                        onChange={e => setForm({...form, title: e.target.value})}
+                        style={{ width: '100%', padding: '8px 12px', border: '1px solid #d1d5db', borderRadius: '6px', fontSize: '14px' }}
+                        placeholder="Titre du ticket"
+                      />
+                    </div>
+                    <div>
+                      <label style={{ display: 'block', fontSize: '13px', fontWeight: '500', marginBottom: '6px', color: '#374151' }}>Priorite</label>
+                      <select value={form.priority} onChange={e => setForm({...form, priority: e.target.value})}
+                        style={{ width: '100%', padding: '8px 12px', border: '1px solid #d1d5db', borderRadius: '6px', fontSize: '14px' }}>
+                        <option value="low">Bas</option>
+                        <option value="medium">Moyen</option>
+                        <option value="high">Haut</option>
+                        <option value="critical">Critique</option>
+                      </select>
+                    </div>
+                  </div>
+                  <div style={{ marginBottom: '16px' }}>
+                    <label style={{ display: 'block', fontSize: '13px', fontWeight: '500', marginBottom: '6px', color: '#374151' }}>Categorie</label>
+                    <select value={form.category_id} onChange={e => setForm({...form, category_id: e.target.value})}
+                      style={{ width: '100%', padding: '8px 12px', border: '1px solid #d1d5db', borderRadius: '6px', fontSize: '14px' }}>
+                      <option value="">Selectionnez une categorie</option>
+                      {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                    </select>
+                  </div>
+                  <div style={{ marginBottom: '16px' }}>
+                    <label style={{ display: 'block', fontSize: '13px', fontWeight: '500', marginBottom: '6px', color: '#374151' }}>Description</label>
+                    <textarea value={form.description} onChange={e => setForm({...form, description: e.target.value})}
+                      rows={3} style={{ width: '100%', padding: '8px 12px', border: '1px solid #d1d5db', borderRadius: '6px', fontSize: '14px' }}
+                      placeholder="Decrivez le probleme..."
+                    />
+                  </div>
+                  <button type="submit" disabled={loading} style={{
+                    padding: '10px 24px', background: '#2563eb', color: '#fff',
+                    border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '14px', fontWeight: '600'
+                  }}>
+                    {loading ? 'Creation...' : 'Creer le ticket'}
+                  </button>
+                </form>
+              </div>
+            )}
+
+            <div style={{ display: 'flex', gap: '8px', marginBottom: '16px' }}>
+              {['all', 'open', 'in_progress', 'resolved', 'closed'].map(s => (
+                <button key={s} onClick={() => setFilter(s)} style={{
+                  padding: '6px 14px', borderRadius: '20px', border: 'none',
+                  cursor: 'pointer', fontSize: '13px', fontWeight: '500',
+                  background: filter === s ? '#2563eb' : '#e5e7eb',
+                  color: filter === s ? '#fff' : '#374151'
+                }}>
+                  {s === 'all' ? 'Tous' : s === 'in_progress' ? 'En cours' : s.charAt(0).toUpperCase() + s.slice(1)}
+                  {' '}({s === 'all' ? tickets.length : tickets.filter(t => t.status === s).length})
+                </button>
+              ))}
+            </div>
+
+            <div style={{ background: '#fff', borderRadius: '12px', boxShadow: '0 1px 4px rgba(0,0,0,0.08)', overflow: 'hidden' }}>
+              {filtered.length === 0 ? (
+                <p style={{ padding: '40px', textAlign: 'center', color: '#6b7280' }}>Aucun ticket trouve</p>
+              ) : filtered.map(t => (
+                <div key={t.id} style={{
+                  padding: '16px 24px', borderBottom: '1px solid #f3f4f6',
+                  display: 'flex', alignItems: 'center', gap: '16px'
+                }}>
+                  <div style={{ flex: 1 }}>
+                    <Link to={`/tickets/${t.id}`} style={{
+                      fontSize: '15px', fontWeight: '600', color: '#1f2937',
+                      textDecoration: 'none', display: 'block', marginBottom: '4px'
+                    }}>
+                      #{t.id} {t.title}
+                    </Link>
+                    <p style={{ fontSize: '13px', color: '#6b7280' }}>
+                      {t.category?.name || 'Sans categorie'} • {t.user?.name} • {new Date(t.created_at).toLocaleDateString('fr-CA')}
+                    </p>
+                  </div>
+                  <span style={{
+                    padding: '4px 12px', borderRadius: '12px', fontSize: '12px', fontWeight: '500',
+                    background: t.priority === 'critical' ? '#fee2e2' : t.priority === 'high' ? '#ffedd5' : '#f3f4f6',
+                    color: t.priority === 'critical' ? '#991b1b' : t.priority === 'high' ? '#9a3412' : '#374151'
+                  }}>{t.priority}</span>
+                  <span style={{
+                    padding: '4px 12px', borderRadius: '12px', fontSize: '12px', fontWeight: '500',
+                    background: t.status === 'open' ? '#dbeafe' : t.status === 'in_progress' ? '#fef3c7' : '#dcfce7',
+                    color: t.status === 'open' ? '#1d4ed8' : t.status === 'in_progress' ? '#92400e' : '#166534'
+                  }}>{t.status}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )
+      }
+    owner: helpdesk
+    group: helpdesk
+    mode: '0644'
+  become: yes
+
+- name: Creer TicketDetail.jsx
+  copy:
+    dest: /opt/helpdesk-frontend/src/pages/TicketDetail.jsx
+    content: |
+      import React, { useState, useEffect } from 'react'
+      import { useParams, useNavigate } from 'react-router-dom'
+      import api from '../api.js'
+
+      export default function TicketDetail() {
+        const { id } = useParams()
+        const navigate = useNavigate()
+        const [ticket, setTicket] = useState(null)
+        const [comments, setComments] = useState([])
+        const [comment, setComment] = useState('')
+        const [user] = useState(JSON.parse(localStorage.getItem('user') || '{}'))
+
+        useEffect(() => {
+          if (id === 'new') return
+          api.get(`/tickets/${id}`).then(r => setTicket(r.data)).catch(() => navigate('/tickets'))
+          api.get(`/comments/ticket/${id}`).then(r => setComments(r.data)).catch(() => {})
+        }, [id])
+
+        const updateStatus = async (status) => {
+          const res = await api.patch(`/tickets/${id}`, { status })
+          setTicket(res.data)
+        }
+
+        const addComment = async (e) => {
+          e.preventDefault()
+          if (!comment.trim()) return
+          const res = await api.post(`/comments/ticket/${id}`, { message: comment })
+          setComments([...comments, res.data])
+          setComment('')
+        }
+
+        if (!ticket) return <div style={{ padding: '40px', textAlign: 'center', color: '#6b7280' }}>Chargement...</div>
+
+        return (
+          <div>
+            <button onClick={() => navigate('/tickets')} style={{
+              padding: '8px 16px', background: '#f3f4f6', border: 'none',
+              borderRadius: '6px', cursor: 'pointer', marginBottom: '24px', fontSize: '14px'
+            }}>
+              Retour aux tickets
+            </button>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '24px' }}>
+              <div>
+                <div style={{ background: '#fff', borderRadius: '12px', padding: '24px', marginBottom: '24px', boxShadow: '0 1px 4px rgba(0,0,0,0.08)' }}>
+                  <h2 style={{ fontSize: '20px', fontWeight: '700', color: '#1f2937', marginBottom: '8px' }}>
+                    #{ticket.id} {ticket.title}
+                  </h2>
+                  <p style={{ color: '#6b7280', lineHeight: '1.6' }}>{ticket.description}</p>
+                </div>
+
+                <div style={{ background: '#fff', borderRadius: '12px', padding: '24px', boxShadow: '0 1px 4px rgba(0,0,0,0.08)' }}>
+                  <h3 style={{ fontSize: '16px', fontWeight: '600', marginBottom: '16px', color: '#1f2937' }}>
+                    Commentaires ({comments.length})
+                  </h3>
+                  {comments.map(c => (
+                    <div key={c.id} style={{
+                      padding: '12px', background: '#f9fafb', borderRadius: '8px',
+                      marginBottom: '12px'
+                    }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
+                        <span style={{ fontSize: '13px', fontWeight: '600', color: '#374151' }}>{c.user?.name}</span>
+                        <span style={{ fontSize: '12px', color: '#6b7280' }}>
+                          {new Date(c.created_at).toLocaleString('fr-CA')}
+                        </span>
+                      </div>
+                      <p style={{ fontSize: '14px', color: '#1f2937' }}>{c.message}</p>
+                    </div>
+                  ))}
+                  <form onSubmit={addComment} style={{ marginTop: '16px' }}>
+                    <textarea value={comment} onChange={e => setComment(e.target.value)}
+                      rows={3} placeholder="Ajouter un commentaire..."
+                      style={{ width: '100%', padding: '10px', border: '1px solid #d1d5db', borderRadius: '8px', fontSize: '14px', marginBottom: '8px' }}
+                    />
+                    <button type="submit" style={{
+                      padding: '8px 20px', background: '#2563eb', color: '#fff',
+                      border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '14px'
+                    }}>
+                      Commenter
+                    </button>
+                  </form>
+                </div>
+              </div>
+
+              <div style={{ background: '#fff', borderRadius: '12px', padding: '24px', boxShadow: '0 1px 4px rgba(0,0,0,0.08)', height: 'fit-content' }}>
+                <h3 style={{ fontSize: '16px', fontWeight: '600', marginBottom: '16px', color: '#1f2937' }}>Informations</h3>
+                <div style={{ marginBottom: '12px' }}>
+                  <p style={{ fontSize: '12px', color: '#6b7280', marginBottom: '4px' }}>STATUT</p>
+                  <span style={{
+                    padding: '4px 12px', borderRadius: '12px', fontSize: '13px', fontWeight: '500',
+                    background: ticket.status === 'open' ? '#dbeafe' : '#fef3c7',
+                    color: ticket.status === 'open' ? '#1d4ed8' : '#92400e'
+                  }}>{ticket.status}</span>
+                </div>
+                <div style={{ marginBottom: '12px' }}>
+                  <p style={{ fontSize: '12px', color: '#6b7280', marginBottom: '4px' }}>PRIORITE</p>
+                  <p style={{ fontSize: '14px', fontWeight: '500', color: '#1f2937' }}>{ticket.priority}</p>
+                </div>
+                <div style={{ marginBottom: '12px' }}>
+                  <p style={{ fontSize: '12px', color: '#6b7280', marginBottom: '4px' }}>CATEGORIE</p>
+                  <p style={{ fontSize: '14px', color: '#1f2937' }}>{ticket.category?.name || 'N/A'}</p>
+                </div>
+                <div style={{ marginBottom: '24px' }}>
+                  <p style={{ fontSize: '12px', color: '#6b7280', marginBottom: '4px' }}>CREE PAR</p>
+                  <p style={{ fontSize: '14px', color: '#1f2937' }}>{ticket.user?.name}</p>
+                </div>
+                {(user.role === 'admin' || user.role === 'tech') && (
+                  <div>
+                    <p style={{ fontSize: '12px', color: '#6b7280', marginBottom: '8px' }}>CHANGER LE STATUT</p>
+                    {['open', 'in_progress', 'resolved', 'closed'].map(s => (
+                      <button key={s} onClick={() => updateStatus(s)}
+                        disabled={ticket.status === s}
+                        style={{
+                          display: 'block', width: '100%', padding: '8px', marginBottom: '6px',
+                          background: ticket.status === s ? '#e5e7eb' : '#f9fafb',
+                          border: '1px solid #e5e7eb', borderRadius: '6px', cursor: 'pointer',
+                          fontSize: '13px', fontWeight: '500', color: ticket.status === s ? '#9ca3af' : '#374151'
+                        }}>
+                        {s === 'in_progress' ? 'En cours' : s.charAt(0).toUpperCase() + s.slice(1)}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )
+      }
+    owner: helpdesk
+    group: helpdesk
+    mode: '0644'
+  become: yes
+
+- name: Creer Users.jsx
+  copy:
+    dest: /opt/helpdesk-frontend/src/pages/Users.jsx
+    content: |
+      import React, { useState, useEffect } from 'react'
+      import api from '../api.js'
+
+      export default function Users() {
+        const [users, setUsers] = useState([])
+
+        useEffect(() => {
+          api.get('/users').then(r => setUsers(r.data)).catch(() => {})
+        }, [])
+
+        const toggleActive = async (u) => {
+          const res = await api.patch(`/users/${u.id}`, { is_active: !u.is_active })
+          setUsers(users.map(x => x.id === u.id ? res.data : x))
+        }
+
+        const changeRole = async (u, role) => {
+          const res = await api.patch(`/users/${u.id}`, { role })
+          setUsers(users.map(x => x.id === u.id ? res.data : x))
+        }
+
+        return (
+          <div>
+            <h2 style={{ fontSize: '24px', fontWeight: '700', color: '#1f2937', marginBottom: '24px' }}>
+              Gestion des utilisateurs ({users.length})
+            </h2>
+            <div style={{ background: '#fff', borderRadius: '12px', boxShadow: '0 1px 4px rgba(0,0,0,0.08)', overflow: 'hidden' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                <thead>
+                  <tr style={{ background: '#f9fafb', borderBottom: '2px solid #e5e7eb' }}>
+                    {['Nom', 'Email', 'Role', 'Statut', 'Derniere connexion', 'Actions'].map(h => (
+                      <th key={h} style={{ padding: '12px 16px', textAlign: 'left', fontSize: '13px', color: '#6b7280', fontWeight: '600' }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {users.map(u => (
+                    <tr key={u.id} style={{ borderBottom: '1px solid #f3f4f6' }}>
+                      <td style={{ padding: '14px 16px', fontSize: '14px', fontWeight: '500', color: '#1f2937' }}>{u.name}</td>
+                      <td style={{ padding: '14px 16px', fontSize: '14px', color: '#6b7280' }}>{u.email}</td>
+                      <td style={{ padding: '14px 16px' }}>
+                        <select value={u.role} onChange={e => changeRole(u, e.target.value)}
+                          style={{ padding: '4px 8px', border: '1px solid #d1d5db', borderRadius: '4px', fontSize: '13px' }}>
+                          <option value="user">User</option>
+                          <option value="tech">Tech</option>
+                          <option value="admin">Admin</option>
+                        </select>
+                      </td>
+                      <td style={{ padding: '14px 16px' }}>
+                        <span style={{
+                          padding: '3px 10px', borderRadius: '12px', fontSize: '12px', fontWeight: '500',
+                          background: u.is_active ? '#dcfce7' : '#fee2e2',
+                          color: u.is_active ? '#166534' : '#991b1b'
+                        }}>{u.is_active ? 'Actif' : 'Inactif'}</span>
+                      </td>
+                      <td style={{ padding: '14px 16px', fontSize: '13px', color: '#6b7280' }}>
+                        {u.last_login ? new Date(u.last_login).toLocaleString('fr-CA') : 'Jamais'}
+                      </td>
+                      <td style={{ padding: '14px 16px' }}>
+                        <button onClick={() => toggleActive(u)} style={{
+                          padding: '5px 12px', fontSize: '12px', cursor: 'pointer',
+                          border: 'none', borderRadius: '4px',
+                          background: u.is_active ? '#fee2e2' : '#dcfce7',
+                          color: u.is_active ? '#dc2626' : '#16a34a'
+                        }}>
+                          {u.is_active ? 'Desactiver' : 'Activer'}
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )
+      }
+    owner: helpdesk
+    group: helpdesk
+    mode: '0644'
+  become: yes
+
+# ─── 3. BUILD DE L'APPLICATION ─────────────────
+- name: Installer les dependances npm
+  command: npm install
+  args:
+    chdir: /opt/helpdesk-frontend
+  become: yes
+  become_user: helpdesk
+
+- name: Build de l'application React
+  command: npm run build
+  args:
+    chdir: /opt/helpdesk-frontend
+  become: yes
+  become_user: helpdesk
+
+# ─── 4. CONFIGURATION NGINX ───────────────────
+- name: Installer Nginx
+  apt:
+    name: nginx
+    state: present
+  become: yes
+
+- name: Configurer Nginx pour servir le frontend
+  copy:
+    dest: /etc/nginx/sites-available/helpdesk-frontend
+    content: |
+      server {
+        listen 80;
+        server_name _;
+        root /opt/helpdesk-frontend/dist;
+        index index.html;
+
+        location / {
+          try_files $uri $uri/ /index.html;
+        }
+
+        location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg)$ {
+          expires 1y;
+          add_header Cache-Control "public, immutable";
+        }
+      }
+    owner: root
+    group: root
+    mode: '0644'
+  become: yes
+  notify: restart nginx
+
+- name: Activer le site frontend
+  file:
+    src: /etc/nginx/sites-available/helpdesk-frontend
+    dest: /etc/nginx/sites-enabled/helpdesk-frontend
+    state: link
+  become: yes
+  notify: restart nginx
+
+- name: Desactiver le site default
+  file:
+    path: /etc/nginx/sites-enabled/default
+    state: absent
+  become: yes
+  notify: restart nginx
+
+- name: Demarrer Nginx
+  service:
+    name: nginx
+    state: started
+    enabled: yes
+  become: yes

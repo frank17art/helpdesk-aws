@@ -1,0 +1,9 @@
+---
+- name: Deploiement Frontend React
+  hosts: frontend_servers
+  become: yes
+  vars:
+    backend_url: "http://13.219.202.209/api"
+    api_url: "http://13.219.202.209"
+  roles:
+    - frontend
