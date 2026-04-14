@@ -1,13 +1,21 @@
-@"
-# HelpDesk AWS — Projet Final Réseautique 4
+# NEXUS Conseil & Associes — Systeme de gestion des incidents IT
 
-Application Help Desk multi-tiers déployée automatiquement sur AWS via Terraform + Ansible.
+Deploiement automatise d'une application Help Desk multi-tiers sur AWS via Terraform et Ansible.
 
 ## Stack
-- Frontend : React + Vite + Chart.js
+- Infrastructure : Terraform + AWS (VPC, EC2, NAT Gateway)
+- Automatisation : Ansible (5 roles)
 - Backend : Flask + SQLAlchemy + JWT
-- Base de données : MySQL 8 + Adminer
-- Load Balancer : Nginx
-- Infrastructure : Terraform + AWS EC2
-- Déploiement : Ansible
-"@ | Set-Content README.md
+- Frontend : React + Vite + Chart.js
+- Base de donnees : MariaDB
+- Securite : Bastion Host, UFW, fail2ban, Ansible Vault
+
+## Deploiement rapide
+1. git clone https://github.com/frank17art/helpdesk-aws.git
+2. cd helpdesk-aws/terraform && terraform apply
+3. Mettre a jour les IPs dans ansible/inventory/hosts.ini
+4. cd ../ansible && ansible-playbook playbooks/site.yml --ask-vault-pass
+5. Acceder a http://<nginx_ip>
+
+## Auteur
+Frank Kadji — Technicien IT | DevOps — College Boreal TSI 2026
