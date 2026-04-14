@@ -6,60 +6,168 @@ import api from '../api.js'
 
 ChartJS.register(ArcElement, Tooltip, Legend)
 
-const StatCard = ({ label, value, color }) => (
-  <div style={{ background: '#fff', borderRadius: '12px', padding: '24px', borderLeft: `4px solid ${color}`, boxShadow: '0 1px 4px rgba(0,0,0,0.08)' }}>
-    <p style={{ fontSize: '13px', color: '#6b7280', marginBottom: '8px' }}>{label}</p>
-    <p style={{ fontSize: '32px', fontWeight: '700', color }}>{value}</p>
+const StatCard = ({ label, value, color, icon, sub }) => (
+  <div style={{
+    background: '#fff', borderRadius: '14px', padding: '24px',
+    borderTop: `4px solid ${color}`, boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
+    display: 'flex', flexDirection: 'column', gap: '8px'
+  }}>
+    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+      <p style={{ fontSize: '13px', color: '#6b7280', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px' }}>{label}</p>
+      <span style={{ fontSize: '24px' }}>{icon}</span>
+    </div>
+    <p style={{ fontSize: '36px', fontWeight: '800', color, margin: 0 }}>{value}</p>
+    {sub && <p style={{ fontSize: '12px', color: '#9ca3af', margin: 0 }}>{sub}</p>}
   </div>
 )
 
 export default function Dashboard() {
   const [stats, setStats] = useState(null)
   const [tickets, setTickets] = useState([])
+  const user = JSON.parse(localStorage.getItem('user') || '{}')
 
   useEffect(() => {
     api.get('/dashboard/stats').then(r => setStats(r.data)).catch(() => {})
     api.get('/tickets').then(r => setTickets(r.data.slice(0, 5))).catch(() => {})
   }, [])
 
-  if (!stats) return <div style={{ padding: '40px', textAlign: 'center', color: '#6b7280' }}>Chargement...</div>
+  if (!stats) return (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '60vh' }}>
+      <div style={{ textAlign: 'center' }}>
+        <div style={{ width: '48px', height: '48px', border: '4px solid #1B2B5E', borderTopColor: '#C9A84C', borderRadius: '50%', margin: '0 auto 16px', animation: 'spin 1s linear infinite' }} />
+        <p style={{ color: '#6b7280' }}>Chargement du tableau de bord...</p>
+      </div>
+    </div>
+  )
 
   const doughnutData = {
     labels: ['Ouverts', 'En cours', 'Resolus', 'Fermes'],
-    datasets: [{ data: [stats.open, stats.in_progress, stats.resolved, stats.closed], backgroundColor: ['#2563eb', '#d97706', '#16a34a', '#6b7280'], borderWidth: 0 }]
+    datasets: [{
+      data: [stats.open, stats.in_progress, stats.resolved, stats.closed],
+      backgroundColor: ['#1B2B5E', '#C9A84C', '#16a34a', '#6b7280'],
+      borderWidth: 0, hoverOffset: 4
+    }]
+  }
+
+  const priorityBadge = (p) => {
+    const map = { critical: ['#fee2e2','#991b1b'], high: ['#ffedd5','#9a3412'], medium: ['#fef9c3','#854d0e'], low: ['#dcfce7','#166534'] }
+    return map[p] || ['#f3f4f6','#374151']
+  }
+
+  const statusBadge = (s) => {
+    const map = { open: ['#dbeafe','#1d4ed8'], in_progress: ['#fef3c7','#92400e'], resolved: ['#dcfce7','#166534'], closed: ['#f3f4f6','#374151'] }
+    return map[s] || ['#f3f4f6','#374151']
   }
 
   return (
     <div>
+      {/* Header */}
       <div style={{ marginBottom: '32px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <h2 style={{ fontSize: '24px', fontWeight: '700', color: '#1f2937' }}>Dashboard</h2>
-        <Link to="/tickets" style={{ padding: '10px 20px', background: '#2563eb', color: '#fff', borderRadius: '8px', textDecoration: 'none', fontSize: '14px', fontWeight: '600' }}>+ Nouveau ticket</Link>
-      </div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '16px', marginBottom: '32px' }}>
-        <StatCard label="Total" value={stats.total} color="#2563eb" />
-        <StatCard label="Ouverts" value={stats.open} color="#2563eb" />
-        <StatCard label="En cours" value={stats.in_progress} color="#d97706" />
-        <StatCard label="Resolus" value={stats.resolved} color="#16a34a" />
-      </div>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px', marginBottom: '32px' }}>
-        <div style={{ background: '#fff', borderRadius: '12px', padding: '24px', boxShadow: '0 1px 4px rgba(0,0,0,0.08)' }}>
-          <h3 style={{ fontSize: '16px', fontWeight: '600', marginBottom: '16px', color: '#1f2937' }}>Repartition par statut</h3>
-          <Doughnut data={doughnutData} options={{ plugins: { legend: { position: 'bottom' } } }} />
+        <div>
+          <h2 style={{ fontSize: '26px', fontWeight: '800', color: '#1B2B5E', margin: 0 }}>
+            Tableau de bord
+          </h2>
+          <p style={{ color: '#6b7280', marginTop: '4px', fontSize: '14px' }}>
+            Bonjour, <strong>{user.name}</strong> — Portail IT NEXUS Conseil
+          </p>
         </div>
-        <div style={{ background: '#fff', borderRadius: '12px', padding: '24px', boxShadow: '0 1px 4px rgba(0,0,0,0.08)', textAlign: 'center' }}>
-          <h3 style={{ fontSize: '16px', fontWeight: '600', marginBottom: '16px', color: '#1f2937' }}>Tickets critiques</h3>
-          <p style={{ fontSize: '64px', fontWeight: '700', color: '#dc2626', marginTop: '40px' }}>{stats.critical}</p>
-          <p style={{ color: '#6b7280', marginTop: '8px' }}>tickets critiques actifs</p>
-        </div>
+        <Link to="/tickets" style={{
+          padding: '12px 24px', background: '#1B2B5E', color: '#fff',
+          borderRadius: '10px', textDecoration: 'none', fontSize: '14px',
+          fontWeight: '700', display: 'flex', alignItems: 'center', gap: '8px'
+        }}>
+          + Nouveau ticket
+        </Link>
       </div>
-      <div style={{ background: '#fff', borderRadius: '12px', padding: '24px', boxShadow: '0 1px 4px rgba(0,0,0,0.08)' }}>
-        <h3 style={{ fontSize: '16px', fontWeight: '600', marginBottom: '16px', color: '#1f2937' }}>Derniers tickets</h3>
-        {tickets.length === 0 ? <p style={{ color: '#6b7280', textAlign: 'center', padding: '20px' }}>Aucun ticket</p> : tickets.map(t => (
-          <div key={t.id} style={{ padding: '12px 0', borderBottom: '1px solid #f3f4f6', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <Link to={`/tickets/${t.id}`} style={{ color: '#2563eb', textDecoration: 'none', fontWeight: '500' }}>#{t.id} {t.title}</Link>
-            <span style={{ padding: '3px 10px', borderRadius: '12px', fontSize: '12px', background: '#dbeafe', color: '#1d4ed8' }}>{t.status}</span>
+
+      {/* Stats */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '20px', marginBottom: '28px' }}>
+        <StatCard label="Total incidents" value={stats.total} color="#1B2B5E" icon="📋" sub="Tous les tickets" />
+        <StatCard label="Ouverts" value={stats.open} color="#1B2B5E" icon="🔵" sub="En attente" />
+        <StatCard label="En cours" value={stats.in_progress} color="#C9A84C" icon="⚡" sub="Traitement actif" />
+        <StatCard label="Resolus" value={stats.resolved} color="#16a34a" icon="✅" sub="Ce mois-ci" />
+      </div>
+
+      {/* Graphiques */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px', marginBottom: '28px' }}>
+        <div style={{ background: '#fff', borderRadius: '14px', padding: '28px', boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}>
+          <h3 style={{ fontSize: '16px', fontWeight: '700', marginBottom: '24px', color: '#1B2B5E' }}>
+            Repartition des incidents
+          </h3>
+          <Doughnut data={doughnutData} options={{
+            plugins: { legend: { position: 'bottom', labels: { padding: 20, font: { size: 13 } } } },
+            cutout: '65%'
+          }} />
+        </div>
+
+        <div style={{ background: '#fff', borderRadius: '14px', padding: '28px', boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}>
+          <h3 style={{ fontSize: '16px', fontWeight: '700', marginBottom: '24px', color: '#1B2B5E' }}>
+            Indicateurs cles
+          </h3>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            {[
+              { label: 'Taux de resolution', value: stats.total > 0 ? Math.round((stats.resolved / stats.total) * 100) + '%' : '0%', color: '#16a34a' },
+              { label: 'Incidents critiques', value: stats.critical, color: '#dc2626' },
+              { label: 'Notifications non lues', value: stats.unread_notifications, color: '#C9A84C' },
+              { label: 'Incidents fermes', value: stats.closed, color: '#6b7280' }
+            ].map(item => (
+              <div key={item.label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 16px', background: '#f9fafb', borderRadius: '8px' }}>
+                <span style={{ fontSize: '14px', color: '#374151', fontWeight: '500' }}>{item.label}</span>
+                <span style={{ fontSize: '18px', fontWeight: '800', color: item.color }}>{item.value}</span>
+              </div>
+            ))}
           </div>
-        ))}
+        </div>
+      </div>
+
+      {/* Derniers tickets */}
+      <div style={{ background: '#fff', borderRadius: '14px', padding: '28px', boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+          <h3 style={{ fontSize: '16px', fontWeight: '700', color: '#1B2B5E', margin: 0 }}>Incidents recents</h3>
+          <Link to="/tickets" style={{ fontSize: '13px', color: '#C9A84C', fontWeight: '600', textDecoration: 'none' }}>
+            Voir tout →
+          </Link>
+        </div>
+        {tickets.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: '40px', color: '#9ca3af' }}>
+            <p style={{ fontSize: '40px', margin: '0 0 8px' }}>📭</p>
+            <p>Aucun incident pour le moment</p>
+          </div>
+        ) : (
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead>
+              <tr style={{ borderBottom: '2px solid #f3f4f6' }}>
+                {['ID', 'Titre', 'Categorie', 'Priorite', 'Statut', 'Date'].map(h => (
+                  <th key={h} style={{ padding: '10px 12px', textAlign: 'left', fontSize: '12px', color: '#9ca3af', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.5px' }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {tickets.map(t => {
+                const [pbg, pc] = priorityBadge(t.priority)
+                const [sbg, sc] = statusBadge(t.status)
+                return (
+                  <tr key={t.id} style={{ borderBottom: '1px solid #f9fafb' }}>
+                    <td style={{ padding: '14px 12px', fontSize: '13px', color: '#9ca3af', fontWeight: '600' }}>#{t.id}</td>
+                    <td style={{ padding: '14px 12px' }}>
+                      <Link to={`/tickets/${t.id}`} style={{ fontSize: '14px', fontWeight: '600', color: '#1B2B5E', textDecoration: 'none' }}>{t.title}</Link>
+                    </td>
+                    <td style={{ padding: '14px 12px', fontSize: '13px', color: '#6b7280' }}>{t.category?.name || 'N/A'}</td>
+                    <td style={{ padding: '14px 12px' }}>
+                      <span style={{ padding: '3px 10px', borderRadius: '20px', fontSize: '12px', fontWeight: '600', background: pbg, color: pc }}>{t.priority}</span>
+                    </td>
+                    <td style={{ padding: '14px 12px' }}>
+                      <span style={{ padding: '3px 10px', borderRadius: '20px', fontSize: '12px', fontWeight: '600', background: sbg, color: sc }}>{t.status}</span>
+                    </td>
+                    <td style={{ padding: '14px 12px', fontSize: '13px', color: '#9ca3af' }}>
+                      {new Date(t.created_at).toLocaleDateString('fr-CA')}
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        )}
       </div>
     </div>
   )
