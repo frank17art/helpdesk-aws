@@ -1,0 +1,85 @@
+---
+# ══════════════════════════════════════════════════════════
+# HEALTH_CHECK.YML — Verifie l'etat de tous les services
+# Usage: ansible-playbook playbooks/health_check.yml
+# ══════════════════════════════════════════════════════════
+
+- name: "HEALTH CHECK - Verification de tous les noeuds"
+  hosts: all_nodes
+  become: yes
+  tasks:
+    - name: Verifier la connectivite
+      ping:
+
+    - name: Verifier UFW
+      command: ufw status
+      register: ufw_status
+      changed_when: false
+
+    - name: Verifier fail2ban
+      systemd:
+        name: fail2ban
+      register: fail2ban_status
+      changed_when: false
+
+- name: "HEALTH CHECK - Database"
+  hosts: database_servers
+  become: yes
+  tasks:
+    - name: Verifier MariaDB
+      systemd:
+        name: mariadb
+      register: db_status
+      changed_when: false
+
+    - name: Statut MariaDB
+      debug:
+        msg: "MariaDB: {{ db_status.status.ActiveState }}"
+
+- name: "HEALTH CHECK - Backend"
+  hosts: backend_servers
+  become: yes
+  tasks:
+    - name: Verifier le service Flask
+      systemd:
+        name: helpdesk-backend
+      register: backend_status
+      changed_when: false
+
+    - name: Tester l'API Flask
+      uri:
+        url: http://localhost:5000/api/categories
+        method: GET
+        status_code: [200, 401, 422]
+      register: api_test
+      ignore_errors: yes
+
+    - name: Statut Backend
+      debug:
+        msg: "Flask: {{ backend_status.status.ActiveState }} | API: {{ api_test.status | default('unreachable') }}"
+
+- name: "HEALTH CHECK - Nginx Load Balancer"
+  hosts: bastion
+  become: yes
+  tasks:
+    - name: Verifier Nginx bastion
+      systemd:
+        name: nginx
+      register: nginx_status
+      changed_when: false
+
+    - name: Tester le proxy
+      uri:
+        url: http://localhost:80
+        method: GET
+        status_code: [200, 301, 302]
+      register: proxy_test
+      ignore_errors: yes
+
+    - name: Statut Nginx
+      debug:
+        msg: "Nginx LB: {{ nginx_status.status.ActiveState }} | Proxy: {{ proxy_test.status | default('unreachable') }}"
+
+    - name: "Resume final"
+      debug:
+        msg: "HelpDesk accessible sur http://13.219.202.209"

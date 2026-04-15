@@ -1,0 +1,263 @@
+---
+# ══════════════════════════════════════════════════════════
+# DEPLOY FROM GITHUB — Clone et deploie depuis zero
+# Usage: ansible-playbook playbooks/deploy_from_github.yml --ask-vault-pass
+# ══════════════════════════════════════════════════════════
+
+- name: "PHASE 1 - Configuration commune"
+  hosts: all_nodes
+  become: yes
+  roles:
+    - common
+
+- name: "PHASE 2 - Deploiement MySQL"
+  hosts: database_servers
+  become: yes
+  vars_files:
+    - ../vault/secrets.yml
+  roles:
+    - mysql
+
+- name: "PHASE 3 - Deploiement Backend Flask depuis GitHub"
+  hosts: backend_servers
+  become: yes
+  vars_files:
+    - ../vault/secrets.yml
+  vars:
+    db_host: "10.0.2.50"
+    github_repo: "https://github.com/frank17art/helpdesk-aws.git"
+  tasks:
+    - name: Installer dependances Python
+      apt:
+        name:
+          - python3
+          - python3-pip
+          - python3-venv
+          - python3-dev
+          - libmysqlclient-dev
+          - pkg-config
+          - gcc
+          - git
+        state: present
+        update_cache: yes
+
+    - name: Cloner le repo depuis GitHub
+      git:
+        repo: "{{ github_repo }}"
+        dest: /tmp/helpdesk-aws
+        force: yes
+
+    - name: Creer le dossier application
+      file:
+        path: /opt/helpdesk-backend
+        state: directory
+        owner: helpdesk
+        group: helpdesk
+        mode: '0755'
+
+    - name: Copier le code backend
+      copy:
+        src: /tmp/helpdesk-aws/app/backend/
+        dest: /opt/helpdesk-backend/
+        remote_src: yes
+        owner: helpdesk
+        group: helpdesk
+
+    - name: Creer environnement virtuel Python
+      command: python3 -m venv /opt/helpdesk-backend/venv
+      args:
+        creates: /opt/helpdesk-backend/venv
+      become_user: helpdesk
+
+    - name: Installer packages Python
+      pip:
+        requirements: /opt/helpdesk-backend/requirements.txt
+        virtualenv: /opt/helpdesk-backend/venv
+      become_user: helpdesk
+
+    - name: Creer fichier .env
+      copy:
+        dest: /opt/helpdesk-backend/.env
+        content: |
+          FLASK_ENV=production
+          SECRET_KEY={{ flask_secret_key }}
+          JWT_SECRET_KEY={{ jwt_secret_key }}
+          DB_HOST={{ db_host }}
+          DB_PORT=3306
+          DB_NAME={{ mysql_database }}
+          DB_USER={{ mysql_user }}
+          DB_PASSWORD={{ mysql_password }}
+        owner: helpdesk
+        group: helpdesk
+        mode: '0600'
+      no_log: true
+
+    - name: Creer service systemd Flask
+      copy:
+        dest: /etc/systemd/system/helpdesk-backend.service
+        content: |
+          [Unit]
+          Description=HelpDesk NEXUS Backend
+          After=network.target
+
+          [Service]
+          User=helpdesk
+          WorkingDirectory=/opt/helpdesk-backend
+          EnvironmentFile=/opt/helpdesk-backend/.env
+          ExecStart=/opt/helpdesk-backend/venv/bin/gunicorn \
+              --workers 2 \
+              --bind 0.0.0.0:5000 \
+              --timeout 120 \
+              app:app
+          Restart=always
+          RestartSec=5
+
+          [Install]
+          WantedBy=multi-user.target
+
+    - name: Demarrer le backend
+      systemd:
+        name: helpdesk-backend
+        state: restarted
+        enabled: yes
+        daemon_reload: yes
+
+- name: "PHASE 4 - Deploiement Frontend React depuis GitHub"
+  hosts: frontend_servers
+  become: yes
+  vars:
+    github_repo: "https://github.com/frank17art/helpdesk-aws.git"
+    nginx_ip: "13.219.202.209"
+  tasks:
+    - name: Installer Node.js
+      shell: |
+        curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
+        apt install -y nodejs
+      args:
+        creates: /usr/bin/node
+
+    - name: Cloner le repo depuis GitHub
+      git:
+        repo: "{{ github_repo }}"
+        dest: /tmp/helpdesk-aws
+        force: yes
+
+    - name: Creer dossier frontend
+      file:
+        path: /opt/helpdesk-frontend
+        state: directory
+        owner: helpdesk
+        group: helpdesk
+        mode: '0755'
+
+    - name: Copier le code frontend
+      copy:
+        src: /tmp/helpdesk-aws/app/frontend/
+        dest: /opt/helpdesk-frontend/
+        remote_src: yes
+        owner: helpdesk
+        group: helpdesk
+
+    - name: Mettre a jour l URL API
+      replace:
+        path: /opt/helpdesk-frontend/src/api.js
+        regexp: "http://[0-9.]+/api"
+        replace: "http://{{ nginx_ip }}/api"
+
+    - name: Installer dependances npm
+      command: npm install
+      args:
+        chdir: /opt/helpdesk-frontend
+      become_user: helpdesk
+
+    - name: Build React
+      command: npm run build
+      args:
+        chdir: /opt/helpdesk-frontend
+      become_user: helpdesk
+
+    - name: Installer Nginx
+      apt:
+        name: nginx
+        state: present
+
+    - name: Configurer Nginx frontend
+      copy:
+        dest: /etc/nginx/sites-available/helpdesk-frontend
+        content: |
+          server {
+            listen 80 default_server;
+            server_name _;
+            root /opt/helpdesk-frontend/dist;
+            index index.html;
+            location / { try_files $uri $uri/ /index.html; }
+          }
+
+    - name: Activer le site
+      file:
+        src: /etc/nginx/sites-available/helpdesk-frontend
+        dest: /etc/nginx/sites-enabled/helpdesk-frontend
+        state: link
+
+    - name: Supprimer default
+      file:
+        path: /etc/nginx/sites-enabled/default
+        state: absent
+
+    - name: Demarrer Nginx
+      service:
+        name: nginx
+        state: restarted
+        enabled: yes
+
+- name: "PHASE 5 - Nginx Load Balancer"
+  hosts: bastion
+  become: yes
+  vars:
+    backend_ip: "10.0.2.4"
+    frontend_ip: "10.0.2.171"
+  tasks:
+    - name: Installer Nginx
+      apt:
+        name: nginx
+        state: present
+
+    - name: Configurer reverse proxy
+      copy:
+        dest: /etc/nginx/sites-available/helpdesk
+        content: |
+          server {
+            listen 80 default_server;
+            server_name _;
+            location /api/ {
+              proxy_pass http://{{ backend_ip }}:5000/api/;
+              proxy_set_header Host $host;
+              proxy_set_header X-Real-IP $remote_addr;
+            }
+            location / {
+              proxy_pass http://{{ frontend_ip }}:80/;
+              proxy_set_header Host $host;
+              proxy_set_header X-Real-IP $remote_addr;
+            }
+          }
+
+    - name: Activer le site
+      file:
+        src: /etc/nginx/sites-available/helpdesk
+        dest: /etc/nginx/sites-enabled/helpdesk
+        state: link
+
+    - name: Supprimer default
+      file:
+        path: /etc/nginx/sites-enabled/default
+        state: absent
+
+    - name: Demarrer Nginx
+      service:
+        name: nginx
+        state: restarted
+        enabled: yes
+
+    - name: Application deployee !
+      debug:
+        msg: "NEXUS IT Service Desk disponible sur http://{{ ansible_host }}"

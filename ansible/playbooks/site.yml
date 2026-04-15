@@ -1,0 +1,95 @@
+---
+# ══════════════════════════════════════════════════════════
+# SITE.YML — Playbook maitre HelpDesk AWS
+# Deploie toute l'infrastructure en une seule commande
+# Usage: ansible-playbook playbooks/site.yml --ask-vault-pass
+# ══════════════════════════════════════════════════════════
+
+# ─── PHASE 1 : Configuration de base (tous les noeuds) ───
+- name: "PHASE 1 - Configuration commune de tous les noeuds"
+  hosts: all_nodes
+  become: yes
+  roles:
+    - common
+
+# ─── PHASE 2 : Base de donnees ────────────────────────────
+- name: "PHASE 2 - Deploiement MySQL + Adminer"
+  hosts: database_servers
+  become: yes
+  vars_files:
+    - ../vault/secrets.yml
+  roles:
+    - mysql
+
+# ─── PHASE 3 : Backend API ────────────────────────────────
+- name: "PHASE 3 - Deploiement Backend Flask API"
+  hosts: backend_servers
+  become: yes
+  vars_files:
+    - ../vault/secrets.yml
+  vars:
+    db_host: "10.0.2.50"
+  roles:
+    - backend
+
+# ─── PHASE 4 : Load Balancer ──────────────────────────────
+- name: "PHASE 4 - Deploiement Nginx Load Balancer"
+  hosts: bastion
+  become: yes
+  tasks:
+    - name: Installer Nginx
+      apt:
+        name: nginx
+        state: present
+        update_cache: yes
+
+    - name: Configurer Nginx reverse proxy
+      copy:
+        dest: /etc/nginx/sites-available/helpdesk
+        content: |
+          server {
+              listen 80 default_server;
+              server_name _;
+
+              location /api/ {
+                  proxy_pass http://10.0.2.4:5000/api/;
+                  proxy_set_header Host $host;
+                  proxy_set_header X-Real-IP $remote_addr;
+                  proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                  proxy_connect_timeout 30s;
+                  proxy_read_timeout 60s;
+              }
+
+              location / {
+                  proxy_pass http://10.0.2.171:80/;
+                  proxy_set_header Host $host;
+                  proxy_set_header X-Real-IP $remote_addr;
+                  proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                  proxy_connect_timeout 30s;
+                  proxy_read_timeout 60s;
+              }
+          }
+        owner: root
+        group: root
+        mode: '0644'
+
+    - name: Activer le site helpdesk
+      file:
+        src: /etc/nginx/sites-available/helpdesk
+        dest: /etc/nginx/sites-enabled/helpdesk
+        state: link
+
+    - name: Desactiver le site default
+      file:
+        path: /etc/nginx/sites-enabled/default
+        state: absent
+
+    - name: Redemarrer Nginx
+      service:
+        name: nginx
+        state: restarted
+        enabled: yes
+
+    - name: "Application deployee avec succes !"
+      debug:
+        msg: "HelpDesk disponible sur http://13.219.202.209"
