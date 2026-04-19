@@ -1,0 +1,53 @@
+---
+# ══════════════════════════════════════════════════════════
+# ROLLBACK.YML — Redémarre tous les services
+# Usage: ansible-playbook playbooks/rollback.yml
+# ══════════════════════════════════════════════════════════
+
+- name: "ROLLBACK - Redémarrage MariaDB"
+  hosts: database_servers
+  become: yes
+  tasks:
+    - name: Redémarrer MariaDB
+      systemd:
+        name: mariadb
+        state: restarted
+    - name: Statut MariaDB
+      debug:
+        msg: "MariaDB redémarrée avec succès"
+
+- name: "ROLLBACK - Redémarrage Backend Flask"
+  hosts: backend_servers
+  become: yes
+  tasks:
+    - name: Redémarrer Flask
+      systemd:
+        name: helpdesk-backend
+        state: restarted
+    - name: Statut Backend
+      debug:
+        msg: "Backend Flask redémarré avec succès"
+
+- name: "ROLLBACK - Redémarrage Frontend"
+  hosts: frontend_servers
+  become: yes
+  tasks:
+    - name: Redémarrer Nginx frontend
+      systemd:
+        name: nginx
+        state: restarted
+    - name: Statut Frontend
+      debug:
+        msg: "Frontend Nginx redémarré avec succès"
+
+- name: "ROLLBACK - Redémarrage Load Balancer"
+  hosts: bastion
+  become: yes
+  tasks:
+    - name: Redémarrer Nginx bastion
+      systemd:
+        name: nginx
+        state: restarted
+    - name: "Rollback terminé !"
+      debug:
+        msg: "Tous les services redémarrés — http://13.219.202.209"
